@@ -79,7 +79,8 @@ cp .env.example .env.local
 | `NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN` | Shopify Storefront API access token |
 | `NEXT_PUBLIC_SHOPIFY_PRODUCT_ID` | Shopify product ID for the hoodie |
 | `RESEND_API_KEY` | Resend API key for sending emails |
-| `NEXT_PUBLIC_ADMIN_PASSWORD` | Password for the `/admin` review moderation page |
+| `RESEND_FROM_EMAIL` | Sender email address (e.g. `hello@anastoria.com`) |
+| `ADMIN_PASSWORD` | Password for the `/admin` review moderation page (server-side only) |
 
 ### 3. Supabase Setup
 

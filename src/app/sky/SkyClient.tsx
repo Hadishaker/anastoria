@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 interface Star {
@@ -39,6 +39,8 @@ export default function SkyClient() {
   const animRef = useRef<number>(0);
   const bgStarsRef = useRef<CanvasStar[]>([]);
   const timeRef = useRef(0);
+  // Keep latest claimed stars in a ref so the animation loop doesn't need to re-subscribe
+  const claimedStarsRef = useRef<Star[]>([]);
 
   const [claimedStars, setClaimedStars] = useState<Star[]>([]);
   const [selectedStar, setSelectedStar] = useState<Star | null>(null);
@@ -48,6 +50,11 @@ export default function SkyClient() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Keep ref in sync with state so the animation loop reads fresh data
+  useEffect(() => {
+    claimedStarsRef.current = claimedStars;
+  }, [claimedStars]);
 
   // Fetch claimed stars from Supabase
   useEffect(() => {
@@ -88,48 +95,7 @@ export default function SkyClient() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Canvas drawing
-  const drawCanvas = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const { width, height } = canvas;
-    timeRef.current += 1;
-
-    // Clear
-    ctx.clearRect(0, 0, width, height);
-
-    // Draw background stars with twinkling
-    bgStarsRef.current.forEach((star) => {
-      const opacity = star.opacity + Math.sin(timeRef.current * star.twinkleSpeed + star.twinkleOffset) * 0.15;
-      ctx.beginPath();
-      ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,255,255,${Math.max(0.05, Math.min(1, opacity))})`;
-      ctx.fill();
-    });
-
-    // Draw claimed stars
-    claimedStars.forEach((star) => {
-      const px = star.x * width;
-      const py = star.y * height;
-      const glow = ctx.createRadialGradient(px, py, 0, px, py, star.size * 6);
-      glow.addColorStop(0, "rgba(255,255,200,0.9)");
-      glow.addColorStop(0.4, "rgba(255,255,180,0.4)");
-      glow.addColorStop(1, "rgba(255,255,200,0)");
-      ctx.beginPath();
-      ctx.arc(px, py, star.size * 6, 0, Math.PI * 2);
-      ctx.fillStyle = glow;
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(px, py, star.size, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(255,255,220,0.95)";
-      ctx.fill();
-    });
-
-    animRef.current = requestAnimationFrame(drawCanvas);
-  }, [claimedStars]);
-
+  // Canvas animation loop — runs once, reads data from refs
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -141,15 +107,54 @@ export default function SkyClient() {
       bgStarsRef.current = generateBackgroundStars(canvas.width, canvas.height);
     }
 
+    function draw() {
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const { width, height } = canvas;
+      timeRef.current += 1;
+
+      ctx.clearRect(0, 0, width, height);
+
+      // Draw twinkling background stars
+      bgStarsRef.current.forEach((star) => {
+        const opacity = star.opacity + Math.sin(timeRef.current * star.twinkleSpeed + star.twinkleOffset) * 0.15;
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,255,255,${Math.max(0.05, Math.min(1, opacity))})`;
+        ctx.fill();
+      });
+
+      // Draw claimed stars (read from ref to avoid stale closure)
+      claimedStarsRef.current.forEach((star) => {
+        const px = star.x * width;
+        const py = star.y * height;
+        const glow = ctx.createRadialGradient(px, py, 0, px, py, star.size * 6);
+        glow.addColorStop(0, "rgba(255,255,200,0.9)");
+        glow.addColorStop(0.4, "rgba(255,255,180,0.4)");
+        glow.addColorStop(1, "rgba(255,255,200,0)");
+        ctx.beginPath();
+        ctx.arc(px, py, star.size * 6, 0, Math.PI * 2);
+        ctx.fillStyle = glow;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(px, py, star.size, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,255,220,0.95)";
+        ctx.fill();
+      });
+
+      animRef.current = requestAnimationFrame(draw);
+    }
+
     resize();
     window.addEventListener("resize", resize);
-    animRef.current = requestAnimationFrame(drawCanvas);
+    animRef.current = requestAnimationFrame(draw);
 
     return () => {
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(animRef.current);
     };
-  }, [drawCanvas]);
+  }, []); // empty deps — loop runs once; reads latest data via refs
 
   function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current;
@@ -161,7 +166,7 @@ export default function SkyClient() {
     const yFrac = py / canvas.height;
 
     // Check if clicking on existing claimed star
-    const clicked = claimedStars.find((s) => {
+    const clicked = claimedStarsRef.current.find((s) => {
       const sx = s.x * canvas.width;
       const sy = s.y * canvas.height;
       return Math.sqrt((px - sx) ** 2 + (py - sy) ** 2) < 20;

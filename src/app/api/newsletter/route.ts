@@ -45,8 +45,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Send welcome email via Resend
+    const fromEmail = process.env.RESEND_FROM_EMAIL ?? "hello@anastoria.com";
     const { error: emailError } = await getResend().emails.send({
-      from: "Anastoria <hello@anastoria.com>",
+      from: `Anastoria <${fromEmail}>`,
       to: [email],
       subject: "Welcome to Anastoria",
       html: `
